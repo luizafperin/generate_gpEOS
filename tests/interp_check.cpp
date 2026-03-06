@@ -140,7 +140,7 @@ for (int i = 0; i < N_e - 1; ++i) {
     }
 
     fout.close();
-    std::cout << "Wrote interp_check.dat with random tests.\n";
+    //std::cout << "Wrote interp_check.dat with random tests.\n";
 
     auto end = std::chrono::steady_clock::now();
 

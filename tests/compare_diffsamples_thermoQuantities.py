@@ -10,10 +10,10 @@ def load_eos_file(filename):
     e, T, p, cs2, s = data.T
     return e, T, p, cs2, s
 
-def plot_eos_comparison(l, sigma, data_dir="/home/luizaperin/masters_research/gp/data_files/unconstrained/l15_s30"):
-    sample_indices = [0, 1, 2]
-    colors = ["tab:purple", "tab:blue", "tab:green"]
-    labels = [r"$s=0$", r"$s=1$", r"$s=2$"]
+def plot_eos_comparison(l, sigma, data_dir="/home/luizaperin/masters_research/gp/data_files/constrained/l10_s15/Testing_files/newStepsize"):
+    sample_indices = [18, 20, 21]  # replace with your sample indices
+    colors = ["tab:red", "tab:purple", "tab:orange",]  # add more colors if needed
+    labels = [r"$s=18$", r"$s=20$", r"$s=21$"]  # replace with your labels
 
     plt.figure(figsize=(10, 8))
 
@@ -29,22 +29,22 @@ def plot_eos_comparison(l, sigma, data_dir="/home/luizaperin/masters_research/gp
 
     # ---- Labels and formatting ----
     plt.xlabel(r"$T$ [GeV]")
-    plt.ylabel(r"$s$ [1/fm$^3$]")
-    plt.title(f"Entropy vs Temperature (l={l}, σ={sigma})")
+    plt.ylabel(r"$cs2$")
+    plt.title(f"cs2 vs Temperature (l={l}, σ={sigma})")
 
     plt.grid(True, alpha=0.3)
     plt.legend()
 
     # set limits differently according to which thermo quantity is being plotted
-    plt.xlim(0.060, 0.1)
-    plt.ylim(0.1, 0.2)
+    plt.xlim(0.03, 0.7)
+    #plt.ylim(0, 1)
 
     plt.tight_layout()
-    plt.savefig("/home/luizaperin/masters_research/hydro_res_analysis_run3/plots_unc/l15_s30/w/entropy_file_plots_s1.png")
+    plt.savefig("/home/luizaperin/masters_research/hydro_res_analysis/plots_const/l10_s15/w/cs2_plots_s18_21.png")
     plt.show()
 
 if __name__ == "__main__":
     # Example parameters
-    l = 15
-    sigma = 30
+    l = 10
+    sigma = 15
     plot_eos_comparison(l, sigma)

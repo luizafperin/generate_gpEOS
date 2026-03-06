@@ -66,7 +66,7 @@ def check_thermo_identity(
     }
 
 result = check_thermo_identity(
-    "./gp/data_files/constrained/l10_s15/eos_w_s23_l10_s15.dat",
+    "./gp/data_files/constrained/l10_s15/eos_w_s27_l10_s15.dat",
     tol=1e-3
 )
 

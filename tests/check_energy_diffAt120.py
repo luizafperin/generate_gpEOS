@@ -3,7 +3,7 @@ import numpy as np
 # === parameters ===
 l = 10          # set your value
 sigma = 15      # set your value
-sample_idx = 20  # set your value
+sample_idx = 21  # set your value
 
 T_target_GeV = 0.120  # 120 MeV
 tol = 1e-4            # tolerance in GeV
