@@ -9,19 +9,49 @@
 using namespace std;
 
 
-double interpolate1D_nonuniform(double e, vector<double>& xe, vector<double>& ye){
+double interpolate1D_nonuniform(double e, vector<double>& xe, vector<double>& ye, double asymptotic_value) {
     int N_e = xe.size();
-    
-    // --- underflow: extrapolate with first two points
+
+
     if (e < xe[0]) {
-        const double slope = (ye[1] - ye[0]) / (xe[1] - xe[0]);
-        return ye[0] + slope * (e - xe[0]);
+        std::cerr << "Energy point out of table limits (below)"<< std::endl; 
+        exit(1);
     }
 
-    // --- overflow: extrapolate with last two points
+    // --- Extrapolation above table
     if (e >= xe[N_e - 1]) {
-        const double slope = (ye[N_e - 1] - ye[N_e - 2]) / (xe[N_e - 1] - xe[N_e - 2]);
-        return ye[N_e - 2] + slope * (e - xe[N_e - 2]);
+        //std::cerr << "Energy point out of table limits (abv)"<< std::endl; 
+        //std::cerr << "Using X as " << asymptotic_value << std::endl; 
+
+        const double x0 = xe[N_e - 1];
+        const double y0 = ye[N_e - 1];
+
+        const double x1 = xe[N_e - 2];
+        const double y1 = ye[N_e - 2];
+
+        const double slope = (y0 - y1) / (x0 - x1);
+
+        double X_inf = asymptotic_value;  
+
+        const double delta = X_inf - y0;
+
+        // If slope already ~0 or delta ~0, just return asymptote
+        if (std::abs(delta) < 1e-12 || std::abs(slope) < 1e-12) {
+            return X_inf;
+        }
+        
+        if (delta * slope <= 0) {
+        // slope not pointing toward asymptote
+            //std::cerr << "Using X as " << X_inf << std::endl;
+            return X_inf;
+        }
+
+        const double k = slope / delta;
+
+        const double result =
+            X_inf - delta * std::exp(-k * (e - x0));
+
+        return result;
     }
 
     // --- binary search using iterators
@@ -54,7 +84,7 @@ int main() {
     auto start = std::chrono::steady_clock::now();
 
 
-    std::ifstream eos_file("/home/luizaperin/masters_research/gp/data_files/constrained/l10_s15/eos_w_s0_l10_s15_clean.dat");
+    std::ifstream eos_file("/home/luizaperin/masters_research/gp/data_files/constrained/l10_s15/eos_w_s1_l10_s15.dat");
     if (!eos_file.is_open()) {
         std::cerr << "Error: Could not open EOS file." << std::endl;
         return 1;
@@ -101,7 +131,7 @@ int main() {
         return 1;
     }
 
-    std::ofstream fout("./gp/tests/interp_check.dat");
+    std::ofstream fout("/home/luizaperin/masters_research/gp/tests/interp_check.dat");
 
     // --- 1) check exact table points
     //fout << "# index e_val T_tab T_int diff\n";
@@ -128,15 +158,30 @@ for (int i = 0; i < N_e - 1; ++i) {
 }  */
 
 // --- 3) random probes in full range
-    fout << "\n# random probes\n";
+
     double e_min = energy_tb[0];
     double e_max = energy_tb[N_e-1];
-    for (int k = 0; k < 100; ++k) {
-        double e_rand = e_min + (e_max - e_min) * (double(rand()) / RAND_MAX);
-        double T_int  = interpolate1D_nonuniform(e_rand,
-                                                 energy_tb, temperature_tb);
+    cout << e_max << " " << e_min << endl;
 
-    fout << k << " " << e_rand << " " << T_int << "\n";
+    fout << "\n# mixed probes (interp + extrap)\n";
+
+    for (int k = 0; k < 1000; ++k) {
+
+        double e_rand;  // declare first
+
+        if (rand() % 2 == 0) {
+        // inside range
+            e_rand = e_min + (e_max - e_min) * (double(rand()) / RAND_MAX);
+        } else {
+        // extrapolation
+            e_rand = e_max + (e_max - e_min) * (double(rand()) / RAND_MAX);
+            cout << "Extrapolation test with e_rand = " << e_rand << endl;
+        }
+
+        double T_int = interpolate1D_nonuniform(
+            e_rand, energy_tb, temperature_tb, 7000.);
+
+        fout << k << " " << e_rand << " " << T_int << "\n";
     }
 
     fout.close();
