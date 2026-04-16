@@ -1,0 +1,8 @@
+Analysis for eos_pwr_s6_l400_s15.dat
+========================================
+Mode: pwr, Sample: 6, l: 400, sigma: 15
+Total points: 197903
+Thermo violations: 0
+Max diff: 9.09e-13
+Mean diff: 1.72e-14
+Points removed for monotonicity: 18892

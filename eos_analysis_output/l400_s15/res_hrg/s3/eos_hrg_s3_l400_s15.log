@@ -1,0 +1,8 @@
+Analysis for eos_hrg_s3_l400_s15.dat
+========================================
+Mode: hrg, Sample: 3, l: 400, sigma: 15
+Total points: 197903
+Thermo violations: 0
+Max diff: 1.65e-09
+Mean diff: 1.33e-11
+Points removed for monotonicity: 22940
