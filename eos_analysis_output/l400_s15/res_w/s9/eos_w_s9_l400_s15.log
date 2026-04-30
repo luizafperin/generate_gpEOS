@@ -1,8 +1,0 @@
-Analysis for eos_w_s9_l400_s15.dat
-========================================
-Mode: w, Sample: 9, l: 400, sigma: 15
-Total points: 197903
-Thermo violations: 0
-Max diff: 9.09e-13
-Mean diff: 1.70e-14
-Points removed for monotonicity: 22941

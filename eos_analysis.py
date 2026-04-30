@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import glob
@@ -19,6 +20,44 @@ def parse_filename(filename):
         mode, sample_idx, sigma = match.groups()
         return mode, int(sample_idx), 400, int(sigma)
     return None
+
+
+def detect_category(filepath):
+    """Detect whether an EOS file belongs to constrained or unconstrained data."""
+    lower_path = filepath.lower()
+    if "unconstrained" in lower_path:
+        return "unconstrained"
+    if "constrained" in lower_path:
+        return "constrained"
+    return "unknown"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Analyze EOS files with optional category, l, sigma, mode, and sample filters"
+    )
+    parser.add_argument(
+        "--category",
+        choices=["constrained", "unconstrained", "unknown", "all"],
+        default="all",
+        help="Choose constrained or unconstrained files (default: all)",
+    )
+    parser.add_argument("--l", type=int, default=None, help="Filter EOS files by l value")
+    parser.add_argument("--sigma", type=int, default=None, help="Filter EOS files by sigma value")
+    parser.add_argument("--mode", type=str, default=None, help="Filter EOS files by mode, e.g. hrg, pwr, w")
+    parser.add_argument("--sample", type=int, default=None, help="Filter EOS files by sample index")
+    parser.add_argument(
+        "--input-root",
+        default="gp/eosDataFiles",
+        help="Root directory where EOS input files are located",
+    )
+    parser.add_argument(
+        "--base-output",
+        default="/home/luizaperin/codes/eos_analysis_output",
+        help="Base output directory for results",
+    )
+    return parser.parse_args()
+
 
 def load_eos_file(filename):
     """Load an EOS file and return arrays for e, T, p, cs2, and s."""
@@ -248,39 +287,72 @@ def analyze_eos_file(filepath, output_dir, parsed):
         "data": (e, T, p, cs2, s),
     }
 
-def main():
-    # Find all eos_*.dat files
-    eos_files = glob.glob("eos_*.dat") + glob.glob("**/eos_*.dat", recursive=True)
+def main(args=None):
+    if args is None:
+        args = parse_args()
+
+    # Find all eos_*.dat files under the selected input root
+    input_root = os.path.abspath(args.input_root)
+    print(f"Using input root: {input_root}")
+    eos_files = glob.glob(os.path.join(input_root, "eos_*.dat")) + glob.glob(os.path.join(input_root, "**/eos_*.dat"), recursive=True)
     if not eos_files:
-        print("No eos_*.dat files found.")
+        print(f"No eos_*.dat files found under {input_root}.")
         return
 
-    # Group files by (l, sigma)
+    # Filter files and group by category, l, sigma
     groups = defaultdict(list)
     parsed_files = {}
     for filepath in eos_files:
         filename = os.path.basename(filepath)
         parsed = parse_filename(filename)
-        if parsed:
-            mode, sample_idx, l, sigma = parsed
-            groups[(l, sigma)].append((filepath, mode, sample_idx))
-            parsed_files[filepath] = parsed
+        if not parsed:
+            continue
 
-    # Create output directory
-    output_dir = "/home/luizaperin/masters_research/gp/eos_analysis_output"
-    output_dir = os.path.abspath(output_dir)
-    os.makedirs(output_dir, exist_ok=True)
+        mode, sample_idx, l, sigma = parsed
+        category = detect_category(filepath)
+
+        if args.category != "all" and category != args.category:
+            continue
+        if args.l is not None and l != args.l:
+            continue
+        if args.sigma is not None and sigma != args.sigma:
+            continue
+        if args.mode is not None and mode != args.mode:
+            continue
+        if args.sample is not None and sample_idx != args.sample:
+            continue
+
+        groups[(category, l, sigma)].append((filepath, mode, sample_idx))
+        parsed_files[filepath] = (mode, sample_idx, l, sigma, category)
+
+    if not parsed_files:
+        print("No matching EOS files found for the selected filters.")
+        return
+
+    # Create base output directory
+    output_base_dir = os.path.abspath(args.base_output)
+    os.makedirs(output_base_dir, exist_ok=True)
+
+    print("Selected filters:")
+    print(f"  category = {args.category}")
+    print(f"  l = {args.l}")
+    print(f"  sigma = {args.sigma}")
+    print(f"  mode = {args.mode}")
+    print(f"  sample = {args.sample}")
+    print(f"  base output = {output_base_dir}")
+    print(f"Found {len(parsed_files)} matching EOS file(s).\n")
 
     results = []
-    for filepath in eos_files:
-        parsed = parsed_files.get(filepath)
-        if parsed:
-            result = analyze_eos_file(filepath, output_dir, parsed)
-            results.append(result)
+    for filepath, parsed in parsed_files.items():
+        mode, sample_idx, l, sigma, category = parsed
+        file_output_dir = os.path.join(output_base_dir, category)
+        os.makedirs(file_output_dir, exist_ok=True)
+        result = analyze_eos_file(filepath, file_output_dir, (mode, sample_idx, l, sigma))
+        results.append(result)
 
-    # Now, for each group, do comparisons
-    for (l, sigma), files in groups.items():
-        group_dir = os.path.join(output_dir, f"l{l}_s{sigma}")
+    # Now, for each category and group, do comparisons
+    for (category, l, sigma), files in groups.items():
+        group_dir = os.path.join(output_base_dir, category, f"l{l}_s{sigma}")
         os.makedirs(group_dir, exist_ok=True)
 
         # Group by sample_idx
@@ -332,7 +404,7 @@ def main():
                 save_path_zoom = os.path.join(samples_dir, f"samples_mode{mode}_zoom.png")
                 plot_comparison(files_data, title_zoom, save_path_zoom, xlim=(0.1, 0.16))
 
-    print(f"Analysis complete. Results saved in {output_dir}")
+    print(f"Analysis complete. Results saved in {output_base_dir}")
 
 if __name__ == "__main__":
     main()
