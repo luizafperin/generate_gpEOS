@@ -1,8 +1,0 @@
-{
-    "cmake.ignoreCMakeListsMissing": true,
-    "files.associations": {
-        "iosfwd": "cpp",
-        "string": "cpp",
-        "istream": "cpp"
-    }
-}
