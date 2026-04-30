@@ -1,6 +1,22 @@
 *.dat
+eosDataFiles/# Data files
+*.dat
 eosDataFiles/
-.venv
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+
+# Editor / IDE
+.vscode/
+*.swp
+*~.venv
 .vscode
 .ipynb_checkpoints
 __pycache__
