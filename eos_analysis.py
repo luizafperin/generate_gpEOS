@@ -32,6 +32,34 @@ def detect_category(filepath):
     return "unknown"
 
 
+def detect_tsw(filepath):
+    """Detect switching temperature value from path segments like Tsw_136.
+
+    Returns an int value when found (e.g. 136) or None otherwise.
+    """
+    parts = Path(filepath).parts
+    for p in parts:
+        m = re.match(r"Tsw_(\d+)$", p, re.IGNORECASE)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                return None
+    m = re.search(r"Tsw_(\d+)", filepath, re.IGNORECASE)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def is_excluded_path(filepath, excluded_dirs=("Training_data",)):
+    """Return True when filepath lives under an excluded directory."""
+    path_parts = [part.lower() for part in Path(filepath).parts]
+    return any(part in {name.lower() for name in excluded_dirs} for part in path_parts)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Analyze EOS files with optional category, l, sigma, mode, and sample filters"
@@ -52,9 +80,20 @@ def parse_args():
         help="Root directory where EOS input files are located",
     )
     parser.add_argument(
+        "--tsw",
+        type=int,
+        default=None,
+        help="Filter by switching temperature value found in path (e.g. 136)",
+    )
+    parser.add_argument(
         "--base-output",
         default="/home/luizaperin/codes/eos_analysis_output",
         help="Base output directory for results",
+    )
+    parser.add_argument(
+        "--include-training-data",
+        action="store_true",
+        help="Also include EOS files located under Training_data directories",
     )
     return parser.parse_args()
 
@@ -172,18 +211,30 @@ def plot_comparison(files_data, title, save_path, compare_type="modes", xlim=Non
     xlim : tuple or None
         X-axis limits (T_min, T_max)
     """
-    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    fig, axs = plt.subplots(2, 2, figsize=(12, 9))
     axs = axs.flatten()
 
-    colors = ['tab:blue', 'tab:red', 'tab:green', 'tab:orange', 'tab:purple']
-    quantities = ['e', 'p', 'cs2', 's']
     ylabels = [r"$\varepsilon$ [GeV/fm$^3$]", r"$p$ [GeV/fm$^3$]", r"$c_s^2$", r"$s$ [1/fm$^3$]"]
-    
+
+    sample_ids = []
+    if compare_type == "samples":
+        for index, label in enumerate(files_data):
+            match = re.search(r"\d+", label)
+            sample_ids.append(int(match.group()) if match else index)
+        sample_norm = plt.Normalize(min(sample_ids) - 0.5, max(sample_ids) + 0.5)
+        colormap = plt.get_cmap("viridis")
+    else:
+        colormap = plt.get_cmap("tab10")
+
     # Store data ranges for auto y-limit adjustment
     data_ranges = [[], [], [], []]  # for e, p, cs2, s
-    
+
     for i, (label, (e, T, p, cs2, s)) in enumerate(files_data.items()):
-        color = colors[i % len(colors)]
+        color = (
+            colormap(sample_norm(sample_ids[i]))
+            if compare_type == "samples"
+            else colormap(i % colormap.N)
+        )
         axs[0].plot(T, e, label=label, color=color, lw=1)
         axs[1].plot(T, p, label=label, color=color, lw=1)
         axs[2].plot(T, cs2, label=label, color=color, lw=1)
@@ -205,7 +256,6 @@ def plot_comparison(files_data, title, save_path, compare_type="modes", xlim=Non
     for ax, ylabel in zip(axs, ylabels):
         ax.set_ylabel(ylabel)
         ax.grid(True, alpha=0.3)
-        ax.legend()
         if xlim:
             ax.set_xlim(xlim)
 
@@ -223,8 +273,33 @@ def plot_comparison(files_data, title, save_path, compare_type="modes", xlim=Non
     axs[2].set_xlabel(r"$T$ [GeV]")
     axs[3].set_xlabel(r"$T$ [GeV]")
 
-    fig.suptitle(title, fontsize=14)
-    plt.tight_layout()
+    fig.suptitle(title, fontsize=14, y=0.99)
+    if compare_type == "samples":
+        sample_count = len(sample_ids)
+        tick_step = max(1, int(np.ceil(sample_count / 8)))
+        tick_positions = sample_ids[::tick_step]
+        if sample_ids[-1] not in tick_positions:
+            tick_positions.append(sample_ids[-1])
+        scalar_mappable = plt.cm.ScalarMappable(norm=sample_norm, cmap=colormap)
+        colorbar = fig.colorbar(
+            scalar_mappable, ax=axs.tolist(), location="right", fraction=0.045, pad=0.04
+        )
+        colorbar.set_label("Sample index")
+        colorbar.set_ticks(tick_positions)
+        colorbar.set_ticklabels([str(sample_id) for sample_id in tick_positions])
+        fig.subplots_adjust(right=0.88, top=0.92)
+    else:
+        handles, labels = axs[0].get_legend_handles_labels()
+        if handles:
+            fig.legend(
+                handles,
+                labels,
+                loc="upper center",
+                bbox_to_anchor=(0.5, 0.95),
+                ncol=min(len(labels), 4),
+                frameon=False,
+            )
+        fig.tight_layout(rect=(0, 0, 1, 0.88 if handles else 0.95))
     plt.savefig(save_path, dpi=300)
     plt.close()
 
@@ -294,12 +369,18 @@ def main(args=None):
     # Find all eos_*.dat files under the selected input root
     input_root = os.path.abspath(args.input_root)
     print(f"Using input root: {input_root}")
-    eos_files = glob.glob(os.path.join(input_root, "eos_*.dat")) + glob.glob(os.path.join(input_root, "**/eos_*.dat"), recursive=True)
+    raw_eos_files = glob.glob(os.path.join(input_root, "eos_*.dat")) + glob.glob(os.path.join(input_root, "**/eos_*.dat"), recursive=True)
+    eos_files = [
+        path
+        for path in raw_eos_files
+        if args.include_training_data or not is_excluded_path(path)
+    ]
+    eos_files = sorted(set(eos_files))
     if not eos_files:
         print(f"No eos_*.dat files found under {input_root}.")
         return
 
-    # Filter files and group by category, l, sigma
+    # Filter files and group by category, tsw, l, sigma
     groups = defaultdict(list)
     parsed_files = {}
     for filepath in eos_files:
@@ -310,9 +391,14 @@ def main(args=None):
 
         mode, sample_idx, l, sigma = parsed
         category = detect_category(filepath)
+        tsw_val = detect_tsw(filepath)
 
         if args.category != "all" and category != args.category:
             continue
+        if args.tsw is not None:
+            # If user requested a specific tsw but file doesn't have it, skip
+            if tsw_val is None or tsw_val != args.tsw:
+                continue
         if args.l is not None and l != args.l:
             continue
         if args.sigma is not None and sigma != args.sigma:
@@ -322,8 +408,8 @@ def main(args=None):
         if args.sample is not None and sample_idx != args.sample:
             continue
 
-        groups[(category, l, sigma)].append((filepath, mode, sample_idx))
-        parsed_files[filepath] = (mode, sample_idx, l, sigma, category)
+        groups[(category, tsw_val, l, sigma)].append((filepath, mode, sample_idx))
+        parsed_files[filepath] = (mode, sample_idx, l, sigma, category, tsw_val)
 
     if not parsed_files:
         print("No matching EOS files found for the selected filters.")
@@ -335,6 +421,7 @@ def main(args=None):
 
     print("Selected filters:")
     print(f"  category = {args.category}")
+    print(f"  tsw = {args.tsw}")
     print(f"  l = {args.l}")
     print(f"  sigma = {args.sigma}")
     print(f"  mode = {args.mode}")
@@ -344,15 +431,21 @@ def main(args=None):
 
     results = []
     for filepath, parsed in parsed_files.items():
-        mode, sample_idx, l, sigma, category = parsed
-        file_output_dir = os.path.join(output_base_dir, category)
+        mode, sample_idx, l, sigma, category, tsw_val = parsed
+        if tsw_val is not None:
+            file_output_dir = os.path.join(output_base_dir, f"Tsw_{tsw_val}", category)
+        else:
+            file_output_dir = os.path.join(output_base_dir, category)
         os.makedirs(file_output_dir, exist_ok=True)
         result = analyze_eos_file(filepath, file_output_dir, (mode, sample_idx, l, sigma))
         results.append(result)
 
     # Now, for each category and group, do comparisons
-    for (category, l, sigma), files in groups.items():
-        group_dir = os.path.join(output_base_dir, category, f"l{l}_s{sigma}")
+    for (category, tsw_val, l, sigma), files in groups.items():
+        if tsw_val is not None:
+            group_dir = os.path.join(output_base_dir, f"Tsw_{tsw_val}", category, f"l{l}_s{sigma}")
+        else:
+            group_dir = os.path.join(output_base_dir, category, f"l{l}_s{sigma}")
         os.makedirs(group_dir, exist_ok=True)
 
         # Group by sample_idx
@@ -376,7 +469,7 @@ def main(args=None):
                 plot_comparison(files_data, title, save_path)
                 
                 # Zoomed T range (100-160 GeV)
-                title_zoom = f"EOS Comparison - Modes (sample {sample_idx}, l={l}, sigma={sigma}) - T=100-160 GeV"
+                title_zoom = f"EOS Comparison - Modes (sample {sample_idx}, l={l}, sigma={sigma}) - T=0.10-0.16 GeV"
                 save_path_zoom = os.path.join(modes_dir, f"modes_sample{sample_idx}_zoom.png")
                 plot_comparison(files_data, title_zoom, save_path_zoom, xlim=(0.1, 0.16))
 
@@ -397,12 +490,18 @@ def main(args=None):
                 samples_dir = os.path.join(group_dir, "samples_comparison")
                 os.makedirs(samples_dir, exist_ok=True)
                 save_path = os.path.join(samples_dir, f"samples_mode{mode}_full.png")
-                plot_comparison(files_data, title, save_path)
+                plot_comparison(files_data, title, save_path, compare_type="samples")
                 
                 # Zoomed T range (100-160 GeV)
-                title_zoom = f"EOS Comparison - Samples (mode {mode}, l={l}, sigma={sigma}) - T=100-160 GeV"
+                title_zoom = f"EOS Comparison - Samples (mode {mode}, l={l}, sigma={sigma}) - T=0.10-0.16 GeV"
                 save_path_zoom = os.path.join(samples_dir, f"samples_mode{mode}_zoom.png")
-                plot_comparison(files_data, title_zoom, save_path_zoom, xlim=(0.1, 0.16))
+                plot_comparison(
+                    files_data,
+                    title_zoom,
+                    save_path_zoom,
+                    compare_type="samples",
+                    xlim=(0.1, 0.16),
+                )
 
     print(f"Analysis complete. Results saved in {output_base_dir}")
 

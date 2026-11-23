@@ -125,4 +125,30 @@ class GPSampler:
         sample_cs2 = [self.cs2_from_phi(phi) for phi in sample_phi]
 
         return np.array(sample_cs2)
+    
+    def generate_phi(self, l, sigma):
+        """
+        Generate phi samples 
+        """
+        # Transform to phi space
+        mean_phi = np.array([self.phi_from_cs2(cs2) for cs2 in self.mean_data])
+
+        # Build covariance matrix
+        K = []
+        for x1 in self.T_total:
+            K_row = []
+            for x2 in self.T_total:
+                K_row.append(self.kernel_function(x1, x2, sigma, l))
+            K.append(K_row)
+        K = np.array(K)
+        K[np.diag_indices_from(K)] += 0.001 
+
+        # Cholesky decomposition
+        L = cholesky(K)
+
+        # Sample
+        u = np.random.normal(0, 0.05, len(self.T_total))
+        sample_phi = mean_phi + np.dot(L, u)
+
+        return np.array(sample_phi)
 
